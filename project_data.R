@@ -161,3 +161,31 @@ pos_grouped <- group_by(all_games_14_15, position)
 OE_pos <- summarise(pos_grouped, meanOE = mean(oe, na.rm=TRUE))
 
 write.csv(all_games_14_15, "game_log_16_17.csv")
+
+########################################################
+# Getting Game DAta
+########################################################
+
+library(jsonlite)
+sport = "basketball"
+league = "nba"
+ep = "games"
+
+q_body = list(season_id = "nba-2015-2016")
+
+## get the games
+games = ss_get_result(sport = sport,
+                      league = league,
+                      ep = ep,
+                      query= q_body,
+                      version = 1,
+                      verbose = TRUE,
+                      walk = TRUE)
+
+gs <- lapply(games, function(x) x$games)
+nba_games <- rbindlist(gs)
+
+nba_games = nba_games %>% select(-official_ids) %>%
+  mutate(date = as.Date(started_at))
+
+write.csv(nba_games,"data/nba_games_2015_2016.csv"

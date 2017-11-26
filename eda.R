@@ -4,13 +4,30 @@
 library(magrittr)
 library(tidyverse)
 library(reshape)
+library(stringr)
 
 ########################
 # Reading in the data
-nba.15.16 = read.csv("C:/Users/Zachary/Desktop/Fall_2017_Projects/STA_642/STA_642_time/game_log_15_16.csv", header =TRUE, stringsAsFactors = FALSE)
+nba.15.16 = read.csv("C:/Users/Zachary/Desktop/Fall_2017_Projects/STA_642/STA_642_time/data/game_log_15_16.csv", header =TRUE, stringsAsFactors = FALSE)
+nba_games = read.csv("data/nba_games_2015_2016.csv", header = TRUE, stringsAsFactors = FALSE)
+nba_game_date = nba_games %>% select(id,date) %>%
+  mutate(game_id = id) %>%
+  select(-id)
 
-dim(nba.15.16)
-names(nba.15.16)
+nba.15.16 = merge(nba.15.16,nba_game_date,all.x = TRUE) %>% 
+  arrange(date)
+
+teams = unique(nba.15.16$team_id)
+
+i = 1
+for(team in teams){
+  j = 1
+  sorted.dates= unique(sort(nba.15.16$date[nba.15.16$team_id == team]))
+  for(date in sorted.dates){
+    nba.15.16$game_num[nba.15.16$date == date & nba.15.16$team_id == team] = which(sorted.dates == date)
+  }
+}
+
 # Summarize season averages
 season.stat.prelim = nba.15.16 %>% select(player_name,points,assists,field_goals_made,field_goals_attempted,free_throws_made,free_throws_attempted,points,
                                           three_pointers_made,three_pointers_attempted,steals,blocks,plus_minus, rebounds_defensive,rebounds_offensive, rebounds_total) %>%
@@ -25,8 +42,90 @@ season.stat.prelim = nba.15.16 %>% select(player_name,points,assists,field_goals
             total_off_reb = sum(rebounds_offensive), off_reb_pg = mean(rebounds_offensive),
             efg = sum(field_goals_made + .5 * three_pointers_made) / sum(field_goals_attempted),
             total_games = n()) %>%
-  arrange(desc(total_points)) %>%
-  top_n(total_points,n = )
+  arrange(desc(total_points))
+
+
+# Actally relevant and writing data
+# Top 20
+season.stat.game.20 = season.stat.prelim %>%
+  top_n(total_points, n = 20)
+
+top.20.game.log = nba.15.16 %>% filter(player_name %in% season.stat.game.20$player_name)
+
+top.20.game.trim = top.20.game.log %>% select(player_name,field_goals_made, field_goals_attempted,three_pointers_made, 
+                                              three_pointers_attempted, points, steals, assists, blocks, 
+                                              time_played_total,game_num) %>%
+  mutate(efg = (field_goals_made + .5 * three_pointers_made) / field_goals_attempted,
+         efg = ifelse(efg > 1,1,efg),
+         logit.efg = ifelse(efg == 1,log(max(efg[efg<1]) / (1 - max(efg[efg<1]))),
+                            ifelse(efg == 0,log(min(efg[efg>0]) / (1 - min(efg[efg>0]))),
+                                   log(efg / (1 - efg))))
+  )
+
+write.csv(top.20.game.trim, "data/top_20_game_log.csv")
+
+save(top.20.game.trim, file  = "data/top_20_game.Rdata")
+
+
+
+top.20.points.plot = ggplot(top.20.game.trim,aes(x = game_num, y = points, color = player_name, group = player_name)) +
+  geom_line(size = 1) +
+  guides(color = FALSE,group = FALSE) +
+  labs(
+       x = "Game Number",
+       y = "Points") + 
+  theme_bw()
+
+png(file="plots/top_20_points.png",width=800,height=350)
+top.20.points.plot
+dev.off()
+
+top.20.efg.plot = ggplot(top.20.game.trim,aes(x = game_num, y = efg, color = player_name, group = player_name)) +
+  geom_line(size = 1) +
+  guides(color = FALSE, group = FALSE) +
+  labs(x = "Game Number",
+       y = "EFG") +
+  theme_bw()
+png(file = "plots/top_20_efg.png", width = 800, height = 350)
+top.20.efg.plot
+dev.off()
+
+top.20.game.logit.efg.plot = ggplot(top.20.game.trim,aes(x = game_num, y = logit.efg, color = player_name, group = player_name)) +
+  geom_line(size = 1) +
+  guides(color = FALSE,group = FALSE) +
+  labs(
+       x = "Game Number",
+       y = "logit(efg)") +
+  theme_bw()
+
+png(file = "plots/top_20_logit_efg.png", width = 800, height = 350)
+top.20.game.logit.efg.plot
+dev.off()
+
+jh.df = top.20.game.trim %>% filter(player_name == "James Harden")
+
+jh.points.plot = ggplot(jh.df, aes(x = game_num,y = points)) +
+  geom_line(size = 1) +
+  labs(main = "James Harden Points per Game",
+       x  = "Game Number",
+       y = "Points") + 
+  theme_bw()
+png(file = "plots/jh_points_plot.png", , width = 800, height = 350)
+jh.points.plot
+dev.off()
+jh.efg.plot
+jh.logit.efg.plot
+
+
+
+
+
+
+
+
+
+
+############################
 
 season.stat.prelim %>% arrange(desc(efg))
 sum(is.na(season.stat.prelim))
@@ -74,7 +173,7 @@ pacf.df = with(jh.pacf, data.frame(x = lag, y = pacf))
 #########################################
 
 # Some things to consider?
-#Making an array by player that meet certain criteria.
+# Making an array by player that meet certain criteria.
 # Hot hand might be seen in players.
 # What is my definition of hot hand? Higher variance? Consistent scoring?
 # It's all about how the games and shots relate to each other.  I don't have the shots.  
@@ -134,6 +233,9 @@ for(player in player.names){
 
 }
 ###################
+
+
+
 # Top 10
 season.stat.prelim = nba.15.16 %>% select(player_name,points,assists,field_goals_made,field_goals_attempted,free_throws_made,free_throws_attempted,points,
                                           three_pointers_made,three_pointers_attempted,steals,blocks,plus_minus, rebounds_defensive,rebounds_offensive, rebounds_total) %>%
@@ -156,7 +258,7 @@ top.20.log = nba.15.16 %>% filter(player_name %in% season.stat.prelim$player_nam
 
 top.20.log.trim = top.20.log %>% select(player_name,field_goals_made, field_goals_attempted,three_pointers_made, 
                                         three_pointers_attempted, points, steals, assists, blocks, 
-                                        time_played_total) %>%
+                                        time_played_total,game_) %>%
   mutate(efg = (field_goals_made + .5 * three_pointers_made) / field_goals_attempted,
          log.efg = log(efg / (1 - efg)))
 
@@ -177,7 +279,6 @@ for(player in player.names){
 }
 
 write.csv(top.20.log.trim, "game_log_top_20.csv")
-write.csv(all_games, "game_log_15_16.csv")
 
 # hot hand test
 test.vec = sample(c(0,1),1000,replace =  TRUE)
